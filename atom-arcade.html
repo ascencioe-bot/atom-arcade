@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atom Arcade: Escape the Formula Glitch</title>
+<style>
+:root{--bg:#080b16;--panel:#11172b;--ink:#f4f7ff;--muted:#aab4d0;--line:#596585;--accent:#5cf2c7;--danger:#ff5c7a;--coin:#ffe56b}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Courier New",monospace}
+.wrap{max-width:960px;margin:auto;padding:18px}.panel{background:var(--panel);border:4px solid var(--line);box-shadow:6px 6px 0 #000;padding:16px;margin-bottom:14px}
+h1{margin:0 0 8px;font-size:clamp(24px,5vw,46px);color:var(--accent);text-shadow:3px 3px #000}.small{font-size:13px;color:var(--muted)}
+.hud{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}.formula{font-size:clamp(36px,8vw,70px);font-weight:900;margin:8px 0}.formula sub{font-size:.5em}
+#stage{height:430px;position:relative;overflow:hidden;border:4px solid var(--line);background-color:#0b1022;background-image:linear-gradient(#20294a 1px,transparent 1px),linear-gradient(90deg,#20294a 1px,transparent 1px);background-size:32px 32px;touch-action:none}
+.player,.glitch,.atom{position:absolute;display:flex;align-items:center;justify-content:center;user-select:none}.player,.glitch{width:44px;height:44px;font-size:34px;z-index:5}.glitch{font-size:38px}.atom{width:46px;height:46px;background:#18213d;border:3px solid #8996bc;font-weight:bold;font-size:18px;z-index:3}
+.bar{height:18px;border:3px solid var(--line);padding:2px}.fill{height:100%;background:var(--accent);width:0}.controls{display:grid;grid-template-columns:58px 58px 58px;gap:7px;width:max-content;margin:auto}.controls button,.restart{min-height:52px;border:3px solid var(--line);background:#18213d;color:var(--ink);font:900 20px "Courier New";cursor:pointer}.controls .blank{visibility:hidden}.restart{font-size:15px;padding:8px 14px}.msg{font-weight:bold;min-height:42px}.danger{animation:blink .18s linear 4}@keyframes blink{50%{opacity:.15}}.win{color:var(--coin)}
+@media(max-width:600px){#stage{height:360px}.wrap{padding:10px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<section class="panel">
+<h1>ATOM ARCADE</h1>
+<div class="small">ESCAPE THE FORMULA GLITCH • COUNT ATOMS • SURVIVE ALL 8 ROUNDS</div>
+<div class="hud"><div><b>ROUND <span id="round">1</span>/8</b><br><span id="zone">TRAINING GRID</span></div><div><b>SCORE <span id="score">0000</span></b><br>❤️ <span id="hp">3</span></div></div>
+<hr style="border-color:#303b5d">
+<div class="hud"><div><span class="small">TARGET FORMULA</span><div id="formula" class="formula">O<sub>2</sub></div></div><div><span class="small">COLLECT</span><div id="goal" style="font-size:20px;font-weight:bold">O × 2</div><div class="small" id="lesson">Start simple: read the subscript.</div></div></div>
+<div class="bar"><div class="fill" id="progress"></div></div>
+</section>
+
+<div id="stage" tabindex="0" aria-label="Atom Arcade play area">
+<div id="player" class="player">🧑‍🔬</div><div id="glitch" class="glitch">👾</div><div id="atoms"></div>
+</div>
+
+<section class="panel" style="margin-top:14px">
+<div class="hud">
+<div>
+<div class="controls">
+<span class="blank"></span><button data-dir="up">▲</button><span class="blank"></span>
+<button data-dir="left">◀</button><button data-dir="down">▼</button><button data-dir="right">▶</button>
+</div>
+<div class="small" style="margin-top:8px">Use arrow keys or buttons.</div>
+</div>
+<div style="flex:1;min-width:250px"><div id="msg" class="msg">👾 Collect the correct atoms before the Formula Glitch catches you!</div><div class="small">INVENTORY: <b id="inventory">EMPTY</b></div><div class="small">GLITCH SPEED: <b id="speed">1 / 8</b></div><button id="restart" class="restart" style="margin-top:12px">↻ RESTART GAME</button></div>
+</div>
+</section>
+</div>
+<script>
+(()=>{
+const missions=[
+{z:"TRAINING GRID",f:"O₂",n:{O:2},lesson:"Start simple: read the subscript."},
+{z:"SUBSCRIPT SECTOR",f:"H₂O",n:{H:2,O:1},lesson:"No written subscript means 1."},
+{z:"CARBON CAVERNS",f:"CO₂",n:{C:1,O:2},lesson:"Count each element separately."},
+{z:"FORMULA FOREST",f:"Al₂O₃",n:{Al:2,O:3},lesson:"Track more than one element."},
+{z:"COEFFICIENT CAVERN",f:"2H₂O",n:{H:4,O:2},lesson:"Coefficient unlocked! Multiply EVERY atom by 2."},
+{z:"MULTIPLIER MOUNTAIN",f:"3CO₂",n:{C:3,O:6},lesson:"3 multiplies the whole formula."},
+{z:"REACTION RIDGE",f:"2Al₂O₃",n:{Al:4,O:6},lesson:"Coefficient × every subscript."},
+{z:"FINAL BOSS",f:"4NH₃",n:{N:4,H:12},lesson:"Defeat the Coefficient King!"}
+];
+const stage=document.querySelector("#stage"),player=document.querySelector("#player"),glitch=document.querySelector("#glitch"),atomsEl=document.querySelector("#atoms");
+let round=0,score=0,hp=3,inv={},p={x:10,y:180},g={x:800,y:180},atoms=[],timer=null,paused=false,finished=false;
+const subs={"₀":"0","₁":"1","₂":"2","₃":"3","₄":"4","₅":"5","₆":"6","₇":"7","₈":"8","₉":"9"};
+const $=s=>document.querySelector(s);
+function formulaHTML(s){return s.replace(/[₀-₉]+/g,m=>"<sub>"+[...m].map(c=>subs[c]).join("")+"</sub>")}
+function needTotal(){return Object.values(missions[round].n).reduce((a,b)=>a+b,0)}
+function got(){return Object.entries(inv).reduce((a,[e,n])=>a+Math.min(n,missions[round].n[e]||0),0)}
+function chaseSpeed(){return 1.05+round*.18}
+function hud(){let m=missions[round];$("#round").textContent=round+1;$("#zone").textContent=m.z;$("#formula").innerHTML=formulaHTML(m.f);$("#goal").textContent=Object.entries(m.n).map(([e,n])=>e+" × "+n).join(" • ");$("#lesson").textContent=m.lesson;$("#score").textContent=String(score).padStart(4,"0");$("#hp").textContent=hp;$("#inventory").textContent=Object.keys(inv).length?Object.entries(inv).map(([e,n])=>e+" × "+n).join(" • "):"EMPTY";$("#speed").textContent=(round+1)+" / 8";$("#progress").style.width=Math.min(100,got()/needTotal()*100)+"%"}
+function pos(){player.style.left=p.x+"px";player.style.top=p.y+"px";glitch.style.left=g.x+"px";glitch.style.top=g.y+"px"}
+function resetPos(){p={x:8,y:Math.max(10,stage.clientHeight/2-22)};g={x:Math.max(180,stage.clientWidth-52),y:Math.max(10,stage.clientHeight/2-22)};pos()}
+function spawn(){atoms=[];atomsEl.innerHTML="";let m=missions[round],pool=[];Object.entries(m.n).forEach(([e,n])=>{for(let i=0;i<n;i++)pool.push(e)});["C","H","O","N","Cl","Na","Al"].filter(e=>!m.n[e]).slice(0,2).forEach(e=>pool.push(e,e));pool.sort(()=>Math.random()-.5);let W=stage.clientWidth,H=stage.clientHeight;pool.forEach(e=>{let a={e,x:65+Math.random()*Math.max(80,W-130),y:15+Math.random()*Math.max(80,H-70),taken:false};let d=document.createElement("div");d.className="atom";d.textContent=e;d.style.left=a.x+"px";d.style.top=a.y+"px";atomsEl.appendChild(d);a.el=d;atoms.push(a)})}
+function msg(t){$("#msg").textContent=t}
+function collect(){for(const a of atoms){if(a.taken)continue;if(Math.abs(p.x-a.x)<38&&Math.abs(p.y-a.y)<38){a.taken=true;a.el.remove();let need=missions[round].n[a.e]||0,cur=inv[a.e]||0;if(need&&cur<need){inv[a.e]=cur+1;score+=50;msg("✨ "+a.e+" collected! Keep moving!")}else{hp--;score=Math.max(0,score-25);msg("💥 Wrong atom! You lost a life.");if(hp<=0){gameOver();return}}hud();if(got()>=needTotal())complete()}}}
+function move(dx,dy){if(paused||finished||hp<=0)return;p.x=Math.max(0,Math.min(stage.clientWidth-44,p.x+dx));p.y=Math.max(0,Math.min(stage.clientHeight-44,p.y+dy));pos();collect()}
+function chase(){if(paused||finished||hp<=0)return;let dx=p.x-g.x,dy=p.y-g.y,len=Math.hypot(dx,dy)||1,s=chaseSpeed();g.x+=dx/len*s;g.y+=dy/len*s;pos();if(Math.hypot(p.x-g.x,p.y-g.y)<34){hp--;hud();player.classList.add("danger");setTimeout(()=>player.classList.remove("danger"),500);if(hp<=0){gameOver();return}paused=true;msg("😱 CHOMP! The Formula Glitch caught you. Life lost!");setTimeout(()=>{resetPos();paused=false},700)}}
+function complete(){paused=true;score+=250;hud();if(round===missions.length-1){finished=true;clearInterval(timer);atomsEl.innerHTML="";player.textContent="🏆";glitch.textContent="💥";$("#msg").innerHTML='<span class="win">🏆 YOU DEFEATED THE COEFFICIENT KING! FINAL SCORE: '+score+"</span>";return}msg("⚡ FORMULA COMPLETE! The Glitch gets a little faster next round...");setTimeout(()=>{round++;inv={};resetPos();spawn();hud();paused=false;msg(round===4?"⚠️ COEFFICIENTS UNLOCKED! Multiply every atom!":"👾 ROUND "+(round+1)+" — MOVE! THE GLITCH IS FASTER!")},850)}
+function gameOver(){finished=true;clearInterval(timer);atomsEl.innerHTML="";player.textContent="💥";msg("GAME OVER! The Formula Glitch caught the lab. Hit Restart to try again.")}
+function start(){clearInterval(timer);round=0;score=0;hp=3;inv={};paused=false;finished=false;player.textContent="🧑‍🔬";glitch.textContent="👾";resetPos();spawn();hud();msg("👾 Collect the correct atoms before the Formula Glitch catches you!");timer=setInterval(chase,20);stage.focus()}
+document.querySelectorAll("[data-dir]").forEach(b=>b.addEventListener("click",()=>{let d=b.dataset.dir;if(d==="up")move(0,-25);if(d==="down")move(0,25);if(d==="left")move(-25,0);if(d==="right")move(25,0)}));
+stage.addEventListener("keydown",e=>{if(!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key))return;e.preventDefault();if(e.key==="ArrowUp")move(0,-25);if(e.key==="ArrowDown")move(0,25);if(e.key==="ArrowLeft")move(-25,0);if(e.key==="ArrowRight")move(25,0)});
+$("#restart").addEventListener("click",start);window.addEventListener("resize",()=>{p.x=Math.min(p.x,stage.clientWidth-44);g.x=Math.min(g.x,stage.clientWidth-44);pos()});start();
+})();
+</script>
+</body></html>
